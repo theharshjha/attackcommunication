@@ -2,6 +2,9 @@
 
 A modern, full-stack omnichannel communication platform built with Next.js that enables teams to manage customer conversations across SMS, WhatsApp, and Email from a unified inbox.
 
+LOOM VIDEO LINK: https://www.loom.com/share/9dfa79e49fff46deabdc40adcaee7629
+
+
 ## 🚀 Features
 
 ### Core Functionality
