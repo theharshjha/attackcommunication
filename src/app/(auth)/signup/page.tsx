@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { signUp } from '@/lib/auth-client'
 import { Mail, Lock, User, MessageSquare, Loader2 } from 'lucide-react'
 
@@ -11,7 +10,6 @@ export default function SignupPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const router = useRouter()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -32,7 +30,7 @@ export default function SignupPage() {
           window.location.href = '/dashboard'
         }, 100)
       }
-    } catch (err) {
+    } catch {
       setError('Something went wrong')
     } finally {
       setLoading(false)

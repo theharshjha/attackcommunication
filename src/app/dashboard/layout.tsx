@@ -3,7 +3,7 @@
 
 import { useRouter } from 'next/navigation'
 import { useEffect } from 'react'
-import { useSession, type User } from '@/lib/auth-client'
+import { useSession } from '@/lib/auth-client'
 import { Sidebar } from '@/components/dashboard/sidebar' // <-- Import our new component
 
 export default function DashboardLayout({

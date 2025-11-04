@@ -1,61 +1,110 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
+import { Channel, ConversationState, Prisma } from '@prisma/client'
+import { getServerSession } from '@/lib/auth-server'
 
 export async function GET(req: NextRequest) {
   try {
-    const { searchParams } = new URL(req.url)
-    const channel = searchParams.get('channel') // 'SMS', 'WHATSAPP', 'EMAIL', or null for all
-    const workspace = searchParams.get('workspace') // 'inbound' or 'my-work'
+    const session = await getServerSession()
 
-    // For now, we'll group messages by contact to simulate conversations
-    // Later we'll use the Conversation model
-    
-    // Get all contacts with messages
-    const contacts = await prisma.contact.findMany({
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const { searchParams } = new URL(req.url)
+    const channelParam = searchParams.get('channel')
+    const workspace = searchParams.get('workspace') // 'inbound' or 'my-work'
+    const stateParam = searchParams.get('state')
+
+    // Build where clause
+    const where: Prisma.ConversationWhereInput = {}
+
+    // Filter by workspace
+    if (workspace === 'my-work') {
+      where.assignedToId = session.user.id
+    } else if (workspace === 'inbound') {
+      where.assignedToId = null
+      where.state = { in: [ConversationState.OPEN, ConversationState.WAITING] }
+    }
+
+    // Filter by state
+    if (stateParam && (stateParam === 'OPEN' || stateParam === 'WAITING' || stateParam === 'CLOSED')) {
+      where.state = stateParam as ConversationState
+    }
+
+    // Filter by channel
+    if (channelParam && (channelParam === 'SMS' || channelParam === 'WHATSAPP' || channelParam === 'EMAIL')) {
+      where.messages = {
+        some: {
+          channel: channelParam as Channel
+        }
+      }
+    }
+
+    // Get conversations
+    const conversations = await prisma.conversation.findMany({
+      where,
       include: {
+        contact: {
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+            email: true,
+          }
+        },
         messages: {
-          where: channel ? { channel: channel as any } : {},
           orderBy: { createdAt: 'desc' },
-          take: 1, // Just get the last message for preview
+          take: 1,
         },
+        assignedTo: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            avatar: true,
+          }
+        }
       },
-      where: {
-        messages: {
-          some: {}, // Only contacts with messages
-        },
-      },
+      orderBy: {
+        lastMessageAt: 'desc'
+      }
     })
 
-    // Transform into conversation format
-    const conversations = contacts
-      .filter(contact => contact.messages.length > 0)
-      .map(contact => {
-        const lastMessage = contact.messages[0]
-        
+    // Transform response
+    const response = await Promise.all(
+      conversations.map(async (conv) => {
+        const lastMessage = conv.messages[0] ?? null
+
+        const unreadCount = await prisma.message.count({
+          where: {
+            conversationId: conv.id,
+            direction: 'INBOUND',
+            status: { not: 'READ' },
+          },
+        })
+
         return {
-          id: contact.id, // Using contact ID as conversation ID for now
-          contact: {
-            id: contact.id,
-            name: contact.name,
-            phone: contact.phone,
-            email: contact.email,
-          },
-          lastMessage: {
-            content: lastMessage.content,
-            channel: lastMessage.channel,
-            direction: lastMessage.direction,
-            createdAt: lastMessage.createdAt,
-          },
-          lastMessageAt: lastMessage.createdAt,
-          unreadCount: 0, // TODO: Calculate unread
-          state: 'OPEN', // TODO: Get from conversation model
+          id: conv.id,
+          contactId: conv.contact.id,
+          contact: conv.contact,
+          lastMessage: lastMessage
+            ? {
+                content: lastMessage.content,
+                channel: lastMessage.channel,
+                direction: lastMessage.direction,
+                createdAt: lastMessage.createdAt,
+              }
+            : null,
+          lastMessageAt: conv.lastMessageAt,
+          state: conv.state,
+          assignedTo: conv.assignedTo,
+          unreadCount,
         }
       })
-      .sort((a, b) => 
-        new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime()
-      )
+    )
 
-    return NextResponse.json({ conversations })
+    return NextResponse.json({ conversations: response })
   } catch (error) {
     console.error('Fetch conversations error:', error)
     return NextResponse.json(

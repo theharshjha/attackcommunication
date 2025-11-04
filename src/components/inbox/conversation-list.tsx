@@ -6,6 +6,7 @@ import { ChevronDown, Filter } from 'lucide-react'
 
 interface Conversation {
   id: string
+  contactId: string
   contact: {
     id: string
     name: string | null
@@ -16,9 +17,9 @@ interface Conversation {
     content: string
     channel: 'SMS' | 'WHATSAPP' | 'EMAIL'
     direction: 'INBOUND' | 'OUTBOUND'
-    createdAt: Date
-  }
-  lastMessageAt: Date
+    createdAt: string
+  } | null
+  lastMessageAt: string
   unreadCount: number
   state: 'OPEN' | 'WAITING' | 'CLOSED'
 }
@@ -36,14 +37,14 @@ const CHANNEL_CONFIG = {
 
 export function ConversationList({ selectedId, onSelect }: ConversationListProps) {
   const [channelFilter, setChannelFilter] = useState<string | null>(null)
-  const [stateFilter, setStateFilter] = useState<string>('OPEN')
+  const [stateFilter, setStateFilter] = useState<'OPEN' | 'WAITING' | 'CLOSED' | null>('OPEN')
 
   const { data, isLoading } = useQuery({
     queryKey: ['conversations', channelFilter, stateFilter],
     queryFn: async () => {
       const params = new URLSearchParams()
       if (channelFilter) params.append('channel', channelFilter)
-      if (stateFilter) params.append('state', stateFilter.toUpperCase())
+  if (stateFilter) params.append('state', stateFilter)
 
       const response = await fetch(`/api/conversations?${params}`)
       if (!response.ok) throw new Error('Failed to fetch conversations')
@@ -53,18 +54,19 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
 
   const conversations: Conversation[] = data?.conversations || []
 
-  const formatTime = (date: Date) => {
+  const formatTime = (date: string) => {
     const now = new Date()
-    const diff = now.getTime() - new Date(date).getTime()
+    const dateValue = new Date(date)
+    const diff = now.getTime() - dateValue.getTime()
     const hours = Math.floor(diff / (1000 * 60 * 60))
     
     if (hours < 24) {
-      return new Date(date).toLocaleTimeString('en-US', {
+      return dateValue.toLocaleTimeString('en-US', {
         hour: 'numeric',
         minute: '2-digit',
       })
     }
-    return new Date(date).toLocaleDateString('en-US', { 
+    return dateValue.toLocaleDateString('en-US', { 
       month: 'short', 
       day: 'numeric' 
     })
@@ -85,11 +87,25 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
 
         {/* Filters Row */}
         <div className="flex items-center gap-2">
-          <button className="flex items-center gap-1 px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition">
+          <button
+            onClick={() => setStateFilter(stateFilter === 'OPEN' ? null : 'OPEN')}
+            className={`flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg transition ${
+              stateFilter === 'OPEN'
+                ? 'bg-gray-900 text-white'
+                : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+            }`}
+          >
             Open <ChevronDown className="h-3 w-3" />
           </button>
-          <button className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition">
-            Unread
+          <button
+            onClick={() => setStateFilter(stateFilter === 'WAITING' ? null : 'WAITING')}
+            className={`px-3 py-1.5 text-sm rounded-lg transition ${
+              stateFilter === 'WAITING'
+                ? 'bg-gray-900 text-white'
+                : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            Waiting
           </button>
           <button className="ml-auto flex items-center gap-1 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition">
             <Filter className="h-3 w-3" />
@@ -138,7 +154,9 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
         ) : (
           <div className="divide-y divide-gray-100">
             {conversations.map((conv) => {
-              const channelConfig = CHANNEL_CONFIG[conv.lastMessage.channel]
+              const channelConfig = conv.lastMessage
+                ? CHANNEL_CONFIG[conv.lastMessage.channel]
+                : null
               const isSelected = selectedId === conv.id
 
               return (
@@ -169,13 +187,23 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-1">
-                      <span className="text-xs">{channelConfig.emoji}</span>
-                      <p className="text-xs text-gray-600 truncate">
-                        {conv.lastMessage.direction === 'OUTBOUND' && 'You: '}
-                        {conv.lastMessage.content}
-                      </p>
-                    </div>
+                    {conv.lastMessage && channelConfig ? (
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs">{channelConfig.emoji}</span>
+                        <p className="text-xs text-gray-600 truncate">
+                          {conv.lastMessage.direction === 'OUTBOUND' && 'You: '}
+                          {conv.lastMessage.content}
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-gray-500">No messages yet</p>
+                    )}
+
+                      {conv.unreadCount > 0 && (
+                        <span className="mt-1 inline-flex items-center justify-center rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-semibold text-blue-700">
+                          {conv.unreadCount}
+                        </span>
+                      )}
                   </div>
                 </button>
               )

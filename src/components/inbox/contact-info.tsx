@@ -2,8 +2,15 @@
 
 import { Phone, MessageSquare, Building2, Briefcase, Globe, Tag } from 'lucide-react'
 
+interface Contact {
+  id: string
+  name: string | null
+  phone: string | null
+  email: string | null
+}
+
 interface ContactInfoProps {
-  contact: any
+  contact: Contact | null
 }
 
 export function ContactInfo({ contact }: ContactInfoProps) {

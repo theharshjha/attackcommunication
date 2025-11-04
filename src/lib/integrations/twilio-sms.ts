@@ -1,30 +1,55 @@
 import twilio from 'twilio'
 import { ChannelIntegration, MessagePayload } from './factory'
 
-// Initialize Twilio client with your credentials
-const client = twilio(
-  process.env.TWILIO_ACCOUNT_SID,
-  process.env.TWILIO_AUTH_TOKEN
-)
+function ensureClient() {
+  const accountSid = process.env.TWILIO_ACCOUNT_SID
+  const authToken = process.env.TWILIO_AUTH_TOKEN
+
+  if (!accountSid || !authToken) {
+    throw new Error('Twilio SMS integration is not configured')
+  }
+
+  return twilio(accountSid, authToken)
+}
 
 export class TwilioSMSIntegration implements ChannelIntegration {
   async send(payload: MessagePayload) {
     try {
-      // Call Twilio API to send SMS
+      const client = ensureClient()
+      const fromNumber = payload.from || process.env.TWILIO_PHONE_NUMBER
+
+      if (!fromNumber) {
+        throw new Error('TWILIO_PHONE_NUMBER is not configured')
+      }
+
       const message = await client.messages.create({
-        body: payload.content,                              // Your message text
-        from: payload.from || process.env.TWILIO_PHONE_NUMBER, // Your Twilio number
-        to: payload.to,                                     // Recipient's number
+        body: payload.content,
+        from: fromNumber,
+        to: payload.to,
       })
 
-      // Return Twilio's message ID and status
       return {
-        externalId: message.sid,  // Twilio's unique ID (e.g., "SM12345...")
-        status: message.status,   // "queued", "sent", "delivered", etc.
+        externalId: message.sid,
+        status: message.status,
       }
     } catch (error) {
       console.error('Twilio SMS error:', error)
-      throw error  // Re-throw so calling code knows it failed
+      throw error
     }
   }
+}
+
+export async function sendSMS(to: string, content: string) {
+  const client = ensureClient()
+  const fromNumber = process.env.TWILIO_PHONE_NUMBER
+
+  if (!fromNumber) {
+    throw new Error('TWILIO_PHONE_NUMBER is not configured')
+  }
+
+  return client.messages.create({
+    body: content,
+    from: fromNumber,
+    to,
+  })
 }

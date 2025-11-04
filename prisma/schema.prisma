@@ -46,6 +46,7 @@ model User {
   notes    Note[]
   sessions Session[]
   accounts Account[]
+  assignedConversations Conversation[] @relation("AssignedConversations")
 
   @@map("users")
 }
@@ -63,7 +64,7 @@ model Contact {
 
   messages Message[]
   Note     Note[]
-
+  conversations Conversation[]
   @@index([phone])
   @@index([email])
   @@map("contacts")
@@ -88,6 +89,10 @@ model Message {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+ 
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
 
   @@unique([channel, externalId])
   @@index([contactId, createdAt])
@@ -153,4 +158,31 @@ model Verification {
 
   @@unique([identifier, value])
   @@map("verifications")
+}
+
+enum ConversationState {
+  OPEN
+  WAITING
+  CLOSED
+}
+
+model Conversation {
+  id            String            @id @default(cuid())
+  contactId     String
+  contact       Contact           @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  
+  state         ConversationState @default(OPEN)
+  assignedToId  String?
+  assignedTo    User?             @relation("AssignedConversations", fields: [assignedToId], references: [id], onDelete: SetNull)
+  
+  lastMessageAt DateTime          @default(now())
+  
+  messages      Message[]
+  
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  
+  @@index([state, assignedToId])
+  @@index([contactId])
+  @@map("conversations")
 }

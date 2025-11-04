@@ -1,38 +1,42 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
+import { getServerSession } from '@/lib/auth-server'
 
-// GET - Fetch all contacts
 export async function GET(req: NextRequest) {
   try {
+    const session = await getServerSession()
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     const { searchParams } = new URL(req.url)
-    const search = searchParams.get('search')  // Optional search query
+    const search = searchParams.get('search')?.trim()
 
-    // Build where clause for search
-    const where = search ? {
-      OR: [
-        { name: { contains: search, mode: 'insensitive' as const } },
-        { email: { contains: search, mode: 'insensitive' as const } },
-        { phone: { contains: search } },
-      ]
-    } : {}
+    const where = search
+      ? {
+          OR: [
+            { name: { contains: search, mode: 'insensitive' as const } },
+            { email: { contains: search, mode: 'insensitive' as const } },
+            { phone: { contains: search } },
+          ],
+        }
+      : {}
 
-    // Fetch contacts with message counts
     const contacts = await prisma.contact.findMany({
       where,
       include: {
         _count: {
           select: {
-            messages: true,  // Count of messages per contact
-          }
-        }
+            messages: true,
+          },
+        },
       },
       orderBy: {
-        lastContactedAt: 'desc'  // Most recent first
-      }
+        lastContactedAt: 'desc',
+      },
     })
 
     return NextResponse.json({ contacts })
-
   } catch (error) {
     console.error('Fetch contacts error:', error)
     return NextResponse.json(
@@ -42,13 +46,18 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST - Create new contact
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json()
-    const { name, email, phone } = body
+    const session = await getServerSession()
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
 
-    // Validate at least one contact method
+    const body = await req.json()
+    const name = typeof body.name === 'string' ? body.name.trim() : null
+    const email = typeof body.email === 'string' ? body.email.trim() : null
+    const phone = typeof body.phone === 'string' ? body.phone.trim() : null
+
     if (!email && !phone) {
       return NextResponse.json(
         { error: 'Provide at least email or phone' },
@@ -56,17 +65,15 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Create contact
     const contact = await prisma.contact.create({
       data: {
         name,
         email,
         phone,
-      }
+      },
     })
 
-    return NextResponse.json({ contact })
-
+    return NextResponse.json({ contact }, { status: 201 })
   } catch (error) {
     console.error('Create contact error:', error)
     return NextResponse.json(

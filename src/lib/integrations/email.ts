@@ -1,19 +1,28 @@
 import { Resend } from 'resend'
+import { randomUUID } from 'crypto'
 import { ChannelIntegration, MessagePayload } from './factory'
 
-// Initialize Resend client
-const resend = new Resend(process.env.RESEND_API_KEY)
+const resendApiKey = process.env.RESEND_API_KEY
+const resendClient = resendApiKey ? new Resend(resendApiKey) : null
+
+function ensureResend() {
+  if (!resendClient) {
+    throw new Error('RESEND_API_KEY is not configured')
+  }
+  return resendClient
+}
 
 export class EmailIntegration implements ChannelIntegration {
   async send(payload: MessagePayload) {
     try {
-      // Call Resend API to send email
-      const { data, error } = await resend.emails.send({
-        from: payload.from || 'onboarding@resend.dev', // Resend's test email (works without verification)
-        to: payload.to,                                 // Recipient email
-        subject: 'Message from Unified Inbox',          // Email subject
-        text: payload.content,                          // Plain text version
-        html: `<p>${payload.content}</p>`,             // HTML version (basic for now)
+      const client = ensureResend()
+
+      const { data, error } = await client.emails.send({
+        from: payload.from || 'onboarding@resend.dev',
+        to: payload.to,
+        subject: 'Message from Unified Inbox',
+        text: payload.content,
+        html: `<p>${payload.content}</p>`,
       })
 
       if (error) {
@@ -21,7 +30,7 @@ export class EmailIntegration implements ChannelIntegration {
       }
 
       return {
-        externalId: data?.id || 'email-id',  // Resend's message ID
+        externalId: data?.id ?? randomUUID(),
         status: 'sent',
       }
     } catch (error) {
@@ -29,4 +38,21 @@ export class EmailIntegration implements ChannelIntegration {
       throw error
     }
   }
+}
+
+export async function sendEmail(to: string, subject: string, content: string) {
+  const client = ensureResend()
+  const { data, error } = await client.emails.send({
+    from: 'onboarding@resend.dev',
+    to,
+    subject,
+    text: content,
+    html: `<p>${content}</p>`,
+  })
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  return data
 }

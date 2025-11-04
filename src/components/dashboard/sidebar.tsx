@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
 import {
   Users,
@@ -13,6 +14,7 @@ import {
 } from 'lucide-react'
 import { signOut } from '@/lib/auth-client'
 import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 
 interface SidebarProps {
   user: {
@@ -35,6 +37,16 @@ export function Sidebar({ user }: SidebarProps) {
       .toUpperCase()
       .substring(0, 2) || '?'
   }
+  const { data: stats } = useQuery({
+    queryKey: ['inbox-stats'],
+    queryFn: async () => {
+      const response = await fetch('/api/conversations/stats')
+      if (!response.ok) {
+        throw new Error('Failed to fetch inbox stats')
+      }
+      return response.json()
+    },
+  })
 
   const handleSignOut = async () => {
     await signOut()
@@ -53,14 +65,14 @@ export function Sidebar({ user }: SidebarProps) {
       href: '/dashboard', 
       label: 'Inbound', 
       icon: Inbox,
-      badge: 3,
+      badge: stats?.unassigned ?? 0,
       description: 'Unassigned conversations'
     },
     { 
       href: '/dashboard/my-work', 
       label: 'My Work', 
       icon: User,
-      badge: 12,
+      badge: stats?.assigned ?? 0,
       description: 'Assigned to you'
     },
   ]
@@ -77,9 +89,11 @@ export function Sidebar({ user }: SidebarProps) {
             {/* Avatar */}
             <div className="relative flex-shrink-0">
               {user?.avatar ? (
-                <img
+                <Image
                   src={user.avatar}
                   alt={user.name || 'User'}
+                  width={36}
+                  height={36}
                   className="h-9 w-9 rounded-full object-cover"
                 />
               ) : (

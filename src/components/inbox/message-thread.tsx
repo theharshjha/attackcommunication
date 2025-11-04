@@ -18,7 +18,7 @@ interface Message {
   content: string
   direction: 'INBOUND' | 'OUTBOUND'
   status: string
-  createdAt: Date
+  createdAt: string
 }
 
 interface MessageThreadProps {
@@ -33,42 +33,65 @@ const CHANNEL_CONFIG = {
 
 export function MessageThread({ conversationId }: MessageThreadProps) {
   const [message, setMessage] = useState('')
-  const [selectedChannel, setSelectedChannel] = useState<'SMS' | 'WHATSAPP' | 'EMAIL'>('SMS')
   const [showChannelMenu, setShowChannelMenu] = useState(false)
   const queryClient = useQueryClient()
+  const [selectedChannel, setSelectedChannel] = useState<'SMS' | 'WHATSAPP' | 'EMAIL'>('SMS')
 
-  // Fetch contact details
-  const { data: contactData } = useQuery({
-    queryKey: ['contact', conversationId],
+  // Fetch conversation details (includes contact)
+  const { data: conversationData, isLoading: isConversationLoading } = useQuery({
+    queryKey: ['conversation', conversationId],
     queryFn: async () => {
       if (!conversationId) return null
-      const response = await fetch(`/api/contacts/${conversationId}`)
-      if (!response.ok) throw new Error('Failed to fetch contact')
+      const response = await fetch(`/api/conversations/${conversationId}`)
+      if (!response.ok) throw new Error('Failed to fetch conversation')
       return response.json()
     },
     enabled: !!conversationId,
   })
 
   // Fetch messages
-  const { data: messagesData, isLoading } = useQuery({
+  const { data: messagesData, isLoading: isMessagesLoading } = useQuery({
     queryKey: ['messages', conversationId],
     queryFn: async () => {
       if (!conversationId) return null
-      const response = await fetch(`/api/messages?contactId=${conversationId}`)
+      const response = await fetch(`/api/messages?conversationId=${conversationId}`)
       if (!response.ok) throw new Error('Failed to fetch messages')
       return response.json()
     },
     enabled: !!conversationId,
   })
 
-  // Send message mutation
+  const contact = conversationData?.conversation?.contact ?? null
+  const messages: Message[] = messagesData?.messages || []
+
+  const availableChannels: Array<'SMS' | 'WHATSAPP' | 'EMAIL'> = []
+  if (contact?.phone) {
+    availableChannels.push('SMS', 'WHATSAPP')
+  }
+  if (contact?.email) {
+    availableChannels.push('EMAIL')
+  }
+
   const sendMutation = useMutation({
     mutationFn: async (data: { content: string; channel: string }) => {
+      if (!conversationId) {
+        throw new Error('No conversation selected')
+      }
+
+      const contactId = conversationData?.conversation?.contact?.id
+      if (!contactId) {
+        throw new Error('Conversation contact not found')
+      }
+
+      if (!availableChannels.includes(data.channel as typeof availableChannels[number])) {
+        throw new Error('Channel not available for this contact')
+      }
+
       const response = await fetch('/api/messages/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          contactId: conversationId,
+          contactId,
           channel: data.channel,
           content: data.content,
         }),
@@ -79,16 +102,22 @@ export function MessageThread({ conversationId }: MessageThreadProps) {
     onSuccess: () => {
       setMessage('')
       queryClient.invalidateQueries({ queryKey: ['messages', conversationId] })
+      queryClient.invalidateQueries({ queryKey: ['conversation', conversationId] })
       queryClient.invalidateQueries({ queryKey: ['conversations'] })
     },
   })
 
-  const contact = contactData?.contact
-  const messages: Message[] = messagesData?.messages || []
-
   const handleSend = () => {
     if (!message.trim() || sendMutation.isPending) return
-    sendMutation.mutate({ content: message, channel: selectedChannel })
+    const activeChannel = availableChannels.includes(selectedChannel)
+      ? selectedChannel
+      : availableChannels[0]
+
+    if (!activeChannel) {
+      return
+    }
+
+    sendMutation.mutate({ content: message, channel: activeChannel })
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -98,21 +127,16 @@ export function MessageThread({ conversationId }: MessageThreadProps) {
     }
   }
 
-  // Determine available channels
-  const availableChannels: Array<'SMS' | 'WHATSAPP' | 'EMAIL'> = []
-  if (contact?.phone) {
-    availableChannels.push('SMS', 'WHATSAPP')
-  }
-  if (contact?.email) {
-    availableChannels.push('EMAIL')
-  }
-
-  const formatTime = (date: Date) => {
+  const formatTime = (date: string) => {
     return new Date(date).toLocaleTimeString('en-US', {
       hour: 'numeric',
       minute: '2-digit',
     })
   }
+
+  const activeChannel = availableChannels.includes(selectedChannel)
+    ? selectedChannel
+    : availableChannels[0] ?? selectedChannel
 
   const getContactName = () => {
     return contact?.name || contact?.phone || contact?.email || 'Unknown'
@@ -132,6 +156,31 @@ export function MessageThread({ conversationId }: MessageThreadProps) {
           <p className="text-sm text-gray-500">
             Choose a conversation from the list to start messaging
           </p>
+        </div>
+      </div>
+    )
+  }
+
+  if (isConversationLoading) {
+    return (
+      <div className="flex-1 flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin h-12 w-12 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading conversation...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!conversationData?.conversation) {
+    return (
+      <div className="flex-1 flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="h-16 w-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <X className="h-8 w-8 text-gray-400" />
+          </div>
+          <h3 className="text-lg font-medium text-gray-900 mb-1">Conversation unavailable</h3>
+          <p className="text-sm text-gray-500">Please select another conversation.</p>
         </div>
       </div>
     )
@@ -174,7 +223,7 @@ export function MessageThread({ conversationId }: MessageThreadProps) {
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 bg-gray-50">
-        {isLoading ? (
+  {isMessagesLoading ? (
           <div className="flex justify-center py-8">
             <div className="animate-spin h-6 w-6 border-2 border-blue-600 border-t-transparent rounded-full"></div>
           </div>
@@ -231,15 +280,20 @@ export function MessageThread({ conversationId }: MessageThreadProps) {
           <div className="relative">
             <button
               onClick={() => setShowChannelMenu(!showChannelMenu)}
-              className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition text-sm"
+              disabled={availableChannels.length === 0}
+              className={`flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-lg transition text-sm ${
+                availableChannels.length === 0
+                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                  : 'hover:bg-gray-50'
+              }`}
             >
-              <span>{CHANNEL_CONFIG[selectedChannel].emoji}</span>
-              <span className="font-medium">{CHANNEL_CONFIG[selectedChannel].label}</span>
+              <span>{CHANNEL_CONFIG[activeChannel].emoji}</span>
+              <span className="font-medium">{CHANNEL_CONFIG[activeChannel].label}</span>
               <ChevronDown className="h-3 w-3 text-gray-500" />
             </button>
 
             {/* Channel Dropdown */}
-            {showChannelMenu && (
+            {showChannelMenu && availableChannels.length > 0 && (
               <div className="absolute bottom-full left-0 mb-2 bg-white border border-gray-200 rounded-lg shadow-lg z-50 min-w-[140px]">
                 <div className="p-1">
                   {availableChannels.map((channel) => {
@@ -252,7 +306,7 @@ export function MessageThread({ conversationId }: MessageThreadProps) {
                           setShowChannelMenu(false)
                         }}
                         className={`w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md transition ${
-                          selectedChannel === channel
+                          activeChannel === channel
                             ? 'bg-blue-50 text-blue-700'
                             : 'text-gray-700 hover:bg-gray-50'
                         }`}
@@ -283,7 +337,11 @@ export function MessageThread({ conversationId }: MessageThreadProps) {
           {/* Send Button */}
           <button
             onClick={handleSend}
-            disabled={!message.trim() || sendMutation.isPending}
+            disabled={
+              !message.trim() ||
+              sendMutation.isPending ||
+              availableChannels.length === 0
+            }
             className="p-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition flex-shrink-0"
           >
             {sendMutation.isPending ? (

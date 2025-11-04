@@ -14,26 +14,30 @@ export async function GET(
 
     const { id } = await params
 
-    const contact = await prisma.contact.findUnique({
+    const conversation = await prisma.conversation.findUnique({
       where: { id },
       include: {
-        _count: {
+        contact: true,
+        assignedTo: {
           select: {
-            messages: true,
+            id: true,
+            name: true,
+            email: true,
+            avatar: true,
           },
         },
       },
     })
 
-    if (!contact) {
-      return NextResponse.json({ error: 'Contact not found' }, { status: 404 })
+    if (!conversation) {
+      return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
     }
 
-    return NextResponse.json({ contact })
+    return NextResponse.json({ conversation })
   } catch (error) {
-    console.error('Fetch contact error:', error)
+    console.error('Fetch conversation detail error:', error)
     return NextResponse.json(
-      { error: 'Failed to fetch contact' },
+      { error: 'Failed to fetch conversation' },
       { status: 500 }
     )
   }

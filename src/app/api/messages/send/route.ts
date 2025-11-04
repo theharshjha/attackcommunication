@@ -1,49 +1,57 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
-import { createSender } from '@/lib/integrations/factory'
 import { getServerSession } from '@/lib/auth-server'
+import { createSender } from '@/lib/integrations/factory'
+import { getOrCreateConversation } from '@/lib/conversation'
+import type { Channel, MessageStatus } from '@prisma/client'
+
+const ALLOWED_CHANNELS: Channel[] = ['SMS', 'WHATSAPP', 'EMAIL']
+
+const STATUS_MAPPING: Record<string, MessageStatus> = {
+  queued: 'PENDING',
+  sending: 'PENDING',
+  sent: 'SENT',
+  delivered: 'DELIVERED',
+  read: 'READ',
+  failed: 'FAILED',
+  undelivered: 'FAILED',
+}
 
 export async function POST(req: NextRequest) {
   try {
-    // Validate authentication
     const session = await getServerSession()
     if (!session?.user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Parse request body
-    const body = await req.json()
-    const { contactId, channel, content } = body
+    const { contactId, channel, content } = await req.json()
 
-    // Validate required fields
-    if (!contactId || !channel || !content) {
-      return NextResponse.json(
-        { error: 'Missing required fields' },
-        { status: 400 }
-      )
+    if (!contactId || typeof contactId !== 'string') {
+      return NextResponse.json({ error: 'Invalid contactId' }, { status: 400 })
     }
 
-    // Get contact from database
+    if (!channel || !ALLOWED_CHANNELS.includes(channel)) {
+      return NextResponse.json({ error: 'Unsupported channel' }, { status: 400 })
+    }
+
+    const sanitizedContent = typeof content === 'string' ? content.trim() : ''
+    if (!sanitizedContent) {
+      return NextResponse.json({ error: 'Message content cannot be empty' }, { status: 400 })
+    }
+
     const contact = await prisma.contact.findUnique({
-      where: { id: contactId }
+      where: { id: contactId },
     })
 
     if (!contact) {
-      return NextResponse.json(
-        { error: 'Contact not found' },
-        { status: 404 }
-      )
+      return NextResponse.json({ error: 'Contact not found' }, { status: 404 })
     }
 
-    // Determine recipient based on channel
     let recipient = ''
     if (channel === 'SMS' || channel === 'WHATSAPP') {
-      recipient = contact.phone || ''
+      recipient = contact.phone?.trim() || ''
     } else if (channel === 'EMAIL') {
-      recipient = contact.email || ''
+      recipient = contact.email?.trim() || ''
     }
 
     if (!recipient) {
@@ -53,46 +61,62 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Use factory to get the right integration
     const sender = createSender(channel as 'SMS' | 'WHATSAPP' | 'EMAIL')
-    
-    // Send message through external service (Twilio/Resend)
-    const result = await sender.send({
-      to: recipient,
-      content: content,
+
+    let externalId: string | null = null
+    let status: MessageStatus = 'SENT'
+
+    try {
+      const result = await sender.send({
+        to: recipient,
+        content: sanitizedContent,
+      })
+      externalId = result.externalId ?? null
+      const normalized = result.status?.toLowerCase() ?? ''
+      status = STATUS_MAPPING[normalized] ?? 'SENT'
+    } catch (error) {
+      console.error('Send message dispatch error:', error)
+      return NextResponse.json(
+        { error: 'Failed to dispatch message to provider' },
+        { status: 502 }
+      )
+    }
+
+    const activityDate = new Date()
+
+    const message = await prisma.$transaction(async (tx) => {
+      const conversation = await getOrCreateConversation(tx, contactId)
+
+      const createdMessage = await tx.message.create({
+        data: {
+          channel,
+          content: sanitizedContent,
+          direction: 'OUTBOUND',
+          status,
+          externalId,
+          contactId,
+          userId: session.user.id,
+          conversationId: conversation.id,
+        },
+      })
+
+      await Promise.all([
+        tx.contact.update({
+          where: { id: contactId },
+          data: { lastContactedAt: activityDate },
+        }),
+        tx.conversation.update({
+          where: { id: conversation.id },
+          data: { lastMessageAt: activityDate, state: 'OPEN' },
+        }),
+      ])
+
+      return createdMessage
     })
 
-    // Save message to database for inbox display
-    const message = await prisma.message.create({
-      data: {
-        channel: channel,
-        content: content,
-        direction: 'OUTBOUND',        // We sent it
-        status: 'SENT',
-        externalId: result.externalId, // Twilio SID or Resend ID
-        contactId: contactId,
-      }
-    })
-
-    // Update contact's last contacted time
-    await prisma.contact.update({
-      where: { id: contactId },
-      data: { lastContactedAt: new Date() }
-    })
-
-    return NextResponse.json({ 
-      success: true, 
-      message: message 
-    })
-
+    return NextResponse.json({ success: true, message })
   } catch (error) {
     console.error('Send message error:', error)
-    return NextResponse.json(
-      { error: 'Failed to send message' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to send message' }, { status: 500 })
   }
 }
-
-
- 

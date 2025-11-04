@@ -1,7 +1,7 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
-import { Search, Filter, ChevronDown, Phone, Mail } from 'lucide-react'
+import { Search, ChevronDown, Filter } from 'lucide-react'
 import { useState } from 'react'
 
 interface Contact {
@@ -22,7 +22,6 @@ interface ContactListProps {
 
 export function ContactList({ selectedContactId, onSelectContact }: ContactListProps) {
   const [search, setSearch] = useState('')
-  const [filter, setFilter] = useState<'all' | 'unread'>('all')
 
   const { data, isLoading } = useQuery({
     queryKey: ['contacts', search],
