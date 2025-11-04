@@ -32,3 +32,6 @@ export const auth = betterAuth({
 })
 
 export type Session = typeof auth.$Infer.Session
+export type User = typeof auth.$Infer.Session.user & {
+  role: "ADMIN" | "EDITOR" | "VIEWER"
+}

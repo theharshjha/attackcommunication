@@ -1,4 +1,5 @@
 import { createAuthClient } from "better-auth/react"
+import type { User } from "./auth"
 
 // For development, use localhost; for production, NEXT_PUBLIC_APP_URL is required
 const baseURL = process.env.NEXT_PUBLIC_APP_URL || 
@@ -13,3 +14,6 @@ export const authClient = createAuthClient({
 })
 
 export const { signIn, signOut, signUp, useSession } = authClient
+
+// Export User type for type casting where needed
+export type { User } from "./auth"
