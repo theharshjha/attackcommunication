@@ -24,7 +24,15 @@ interface SidebarProps {
   } | null
 }
 
-export function Sidebar({ user }: SidebarProps) {
+type CurrentUserResponse = {
+  user: {
+    name?: string | null
+    email?: string | null
+    avatar?: string | null
+  }
+}
+
+export function Sidebar({ user: initialUser }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
   const [showUserMenu, setShowUserMenu] = useState(false)
@@ -47,6 +55,25 @@ export function Sidebar({ user }: SidebarProps) {
       return response.json()
     },
   })
+
+  const { data: currentUserData } = useQuery<CurrentUserResponse>({
+    queryKey: ['current-user'],
+    queryFn: async () => {
+      const response = await fetch('/api/user', {
+        credentials: 'include',
+        cache: 'no-store',
+      })
+      if (!response.ok) {
+        throw new Error('Failed to fetch user')
+      }
+      return response.json()
+    },
+    initialData: initialUser ? { user: initialUser } : undefined,
+    staleTime: 5_000,
+    enabled: !!initialUser,
+  })
+
+  const user = currentUserData?.user ?? initialUser
 
   const handleSignOut = async () => {
     await signOut()

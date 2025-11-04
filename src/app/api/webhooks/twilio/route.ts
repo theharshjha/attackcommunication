@@ -4,6 +4,16 @@ import { prisma } from '@/lib/db'
 import { getOrCreateConversation } from '@/lib/conversation'
 import type { Channel, MessageStatus } from '@prisma/client'
 
+// Test endpoint to verify webhook is accessible
+export async function GET() {
+  console.log('✅ Twilio webhook GET test - endpoint is accessible!')
+  return NextResponse.json({ 
+    status: 'ok', 
+    message: 'Twilio webhook endpoint is working',
+    timestamp: new Date().toISOString()
+  })
+}
+
 const twilioSignature = twilio.validateRequest
 
 const STATUS_MAPPING: Record<string, MessageStatus> = {
@@ -18,28 +28,43 @@ const STATUS_MAPPING: Record<string, MessageStatus> = {
 
 export async function POST(req: NextRequest) {
   try {
+    console.log('🔔 Twilio webhook received')
+    
     const authToken = process.env.TWILIO_AUTH_TOKEN
     if (!authToken) {
-      console.error('Twilio webhook error: TWILIO_AUTH_TOKEN is not configured')
+      console.error('❌ Twilio webhook error: TWILIO_AUTH_TOKEN is not configured')
       return NextResponse.json({ error: 'Twilio not configured' }, { status: 500 })
     }
 
     const body = await req.text()
     const params = new URLSearchParams(body)
 
-    const signature = req.headers.get('x-twilio-signature') || ''
-    const url = req.url
+    console.log('📦 Webhook data:', {
+      From: params.get('From'),
+      Body: params.get('Body'),
+      MessageSid: params.get('MessageSid'),
+    })
 
-    const isValid = twilioSignature(
-      authToken,
-      signature,
-      url,
-      Object.fromEntries(params)
-    )
+    // Skip signature validation in development (for ngrok/localhost)
+    const skipValidation = process.env.NODE_ENV === 'development' || process.env.SKIP_TWILIO_VALIDATION === 'true'
+    
+    if (!skipValidation) {
+      const signature = req.headers.get('x-twilio-signature') || ''
+      const url = req.url
 
-    if (!isValid) {
-      console.error('Invalid Twilio signature')
-      return NextResponse.json({ error: 'Invalid signature' }, { status: 403 })
+      const isValid = twilioSignature(
+        authToken,
+        signature,
+        url,
+        Object.fromEntries(params)
+      )
+
+      if (!isValid) {
+        console.error('❌ Invalid Twilio signature')
+        return NextResponse.json({ error: 'Invalid signature' }, { status: 403 })
+      }
+    } else {
+      console.log('⚠️  Skipping signature validation (development mode)')
     }
 
     const messageSid = params.get('MessageSid')?.trim()
@@ -116,11 +141,16 @@ export async function POST(req: NextRequest) {
       ])
     })
 
-    console.log(`✅ Received ${channel} from ${cleanFrom}`)
+    console.log(`✅ Successfully saved ${channel} message from ${cleanFrom}`)
+    console.log(`📝 Message content: ${bodyText}`)
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('Webhook error:', error)
+    console.error('❌ Webhook error:', error)
+    if (error instanceof Error) {
+      console.error('Error details:', error.message)
+      console.error('Stack:', error.stack)
+    }
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

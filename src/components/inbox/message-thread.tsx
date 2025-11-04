@@ -9,7 +9,9 @@ import {
   X, 
   MoreVertical, 
   Send,
-  ChevronDown 
+  ChevronDown,
+  Info,
+  MessageSquare
 } from 'lucide-react'
 
 interface Message {
@@ -23,6 +25,8 @@ interface Message {
 
 interface MessageThreadProps {
   conversationId: string | null
+  onToggleInfo?: () => void
+  showInfoButton?: boolean
 }
 
 const CHANNEL_CONFIG = {
@@ -31,7 +35,11 @@ const CHANNEL_CONFIG = {
   EMAIL: { emoji: '📧', label: 'Email', color: 'purple' },
 }
 
-export function MessageThread({ conversationId }: MessageThreadProps) {
+export function MessageThread({ 
+  conversationId,
+  onToggleInfo,
+  showInfoButton = false 
+}: MessageThreadProps) {
   const [message, setMessage] = useState('')
   const [showChannelMenu, setShowChannelMenu] = useState(false)
   const queryClient = useQueryClient()
@@ -59,6 +67,7 @@ export function MessageThread({ conversationId }: MessageThreadProps) {
       return response.json()
     },
     enabled: !!conversationId,
+    refetchInterval: 10000, // Refetch every 10 seconds
   })
 
   const contact = conversationData?.conversation?.contact ?? null
@@ -203,19 +212,37 @@ export function MessageThread({ conversationId }: MessageThreadProps) {
         </div>
 
         <div className="flex items-center gap-1">
-          <button className="p-2 hover:bg-gray-100 rounded-lg transition">
+          <button 
+            className="p-2 hover:bg-gray-100 rounded-lg transition"
+            title="Call"
+          >
             <Phone className="h-4 w-4 text-gray-600" />
           </button>
-          <button className="p-2 hover:bg-gray-100 rounded-lg transition">
+          <button 
+            className="p-2 hover:bg-gray-100 rounded-lg transition"
+            title="Video call"
+          >
             <Video className="h-4 w-4 text-gray-600" />
           </button>
-          <button className="p-2 hover:bg-gray-100 rounded-lg transition">
+          <button 
+            className="p-2 hover:bg-gray-100 rounded-lg transition"
+            title="Mark as done"
+          >
             <Check className="h-4 w-4 text-gray-600" />
           </button>
-          <button className="p-2 hover:bg-gray-100 rounded-lg transition">
-            <X className="h-4 w-4 text-gray-600" />
-          </button>
-          <button className="p-2 hover:bg-gray-100 rounded-lg transition">
+          {showInfoButton && onToggleInfo && (
+            <button 
+              onClick={onToggleInfo}
+              className="p-2 hover:bg-gray-100 rounded-lg transition"
+              title="Toggle contact info"
+            >
+              <Info className="h-4 w-4 text-gray-600" />
+            </button>
+          )}
+          <button 
+            className="p-2 hover:bg-gray-100 rounded-lg transition"
+            title="More options"
+          >
             <MoreVertical className="h-4 w-4 text-gray-600" />
           </button>
         </div>
@@ -223,13 +250,17 @@ export function MessageThread({ conversationId }: MessageThreadProps) {
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 bg-gray-50">
-  {isMessagesLoading ? (
+        {isMessagesLoading ? (
           <div className="flex justify-center py-8">
             <div className="animate-spin h-6 w-6 border-2 border-blue-600 border-t-transparent rounded-full"></div>
           </div>
         ) : messages.length === 0 ? (
           <div className="text-center py-12">
-            <p className="text-sm text-gray-500">No messages yet. Start the conversation!</p>
+            <div className="bg-white rounded-full h-16 w-16 flex items-center justify-center mx-auto mb-4 shadow-sm">
+              <MessageSquare className="h-8 w-8 text-gray-400" />
+            </div>
+            <h3 className="font-medium text-gray-900 mb-1">No messages yet</h3>
+            <p className="text-sm text-gray-500">Start the conversation by sending a message below</p>
           </div>
         ) : (
           messages.map((msg) => {
@@ -322,7 +353,7 @@ export function MessageThread({ conversationId }: MessageThreadProps) {
           </div>
 
           {/* Message Input */}
-          <div className="flex-1 bg-white border border-gray-300 rounded-lg focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500 transition">
+          <div className="text-black flex-1 bg-white border border-gray-300 rounded-lg focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500 transition">
             <textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}

@@ -8,22 +8,33 @@ import { auth } from './auth'
 export async function getServerSession() {
   try {
     const cookieStore = await cookies()
-    const sessionToken = cookieStore.get('better_auth.session_token')?.value
+    const sessionToken = cookieStore.get('better-auth.session_token')?.value
+
+    console.log('🍪 Session token present:', !!sessionToken)
+    console.log('🍪 All cookies:', cookieStore.getAll().map(c => c.name))
 
     if (!sessionToken) {
+      console.log('❌ No session token found')
       return null
     }
 
+    console.log('🔐 Validating session with better-auth...')
     // Validate session with better-auth
     const session = await auth.api.getSession({
       headers: {
-        cookie: `better_auth.session_token=${sessionToken}`
+        cookie: `better-auth.session_token=${sessionToken}`
       }
+    })
+
+    console.log('✅ Session validated:', {
+      hasSession: !!session,
+      userId: session?.user?.id,
+      email: session?.user?.email
     })
 
     return session
   } catch (error) {
-    console.error('Session validation error:', error)
+    console.error('❌ Session validation error:', error)
     return null
   }
 }

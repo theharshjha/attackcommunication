@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
-import { ChevronDown, Filter } from 'lucide-react'
+import { ChevronDown, Filter, Plus } from 'lucide-react'
 
 interface Conversation {
   id: string
@@ -27,6 +27,7 @@ interface Conversation {
 interface ConversationListProps {
   selectedId: string | null
   onSelect: (id: string) => void
+  workspace?: 'inbound' | 'my-work'
 }
 
 const CHANNEL_CONFIG = {
@@ -35,21 +36,23 @@ const CHANNEL_CONFIG = {
   EMAIL: { emoji: '📧', label: 'Email' },
 }
 
-export function ConversationList({ selectedId, onSelect }: ConversationListProps) {
+export function ConversationList({ selectedId, onSelect, workspace = 'inbound' }: ConversationListProps) {
   const [channelFilter, setChannelFilter] = useState<string | null>(null)
   const [stateFilter, setStateFilter] = useState<'OPEN' | 'WAITING' | 'CLOSED' | null>('OPEN')
 
   const { data, isLoading } = useQuery({
-    queryKey: ['conversations', channelFilter, stateFilter],
+    queryKey: ['conversations', channelFilter, stateFilter, workspace],
     queryFn: async () => {
       const params = new URLSearchParams()
       if (channelFilter) params.append('channel', channelFilter)
-  if (stateFilter) params.append('state', stateFilter)
+      if (stateFilter) params.append('state', stateFilter)
+      if (workspace) params.append('workspace', workspace)
 
       const response = await fetch(`/api/conversations?${params}`)
       if (!response.ok) throw new Error('Failed to fetch conversations')
       return response.json()
     },
+    refetchInterval: 30000, // Refetch every 30 seconds
   })
 
   const conversations: Conversation[] = data?.conversations || []
@@ -80,13 +83,20 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
     <div className="w-96 bg-white border-r border-gray-200 flex flex-col h-full">
       {/* Header */}
       <div className="px-4 py-3 border-b border-gray-200">
-        <div className="flex items-center gap-4 mb-3">
-          <h2 className="text-base font-semibold text-gray-900">Chats</h2>
-          <button className="text-sm text-gray-600">Calls</button>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-base font-semibold text-gray-900">
+            {workspace === 'inbound' ? 'Inbound' : 'My Work'}
+          </h2>
+          <button 
+            className="p-2 hover:bg-gray-100 rounded-lg transition"
+            title="New conversation"
+          >
+            <Plus className="h-4 w-4 text-gray-600" />
+          </button>
         </div>
 
         {/* Filters Row */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 mb-3">
           <button
             onClick={() => setStateFilter(stateFilter === 'OPEN' ? null : 'OPEN')}
             className={`flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg transition ${
@@ -114,7 +124,7 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
         </div>
 
         {/* Channel Tabs */}
-        <div className="flex items-center gap-1 mt-3">
+        <div className="flex items-center gap-1">
           <button
             onClick={() => setChannelFilter(null)}
             className={`px-3 py-1.5 text-sm rounded-lg transition ${
@@ -146,10 +156,24 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
         {isLoading ? (
           <div className="p-8 text-center">
             <div className="animate-spin h-6 w-6 border-2 border-blue-600 border-t-transparent rounded-full mx-auto"></div>
+            <p className="text-sm text-gray-500 mt-2">Loading conversations...</p>
           </div>
         ) : conversations.length === 0 ? (
           <div className="p-8 text-center">
-            <p className="text-sm text-gray-500">No conversations</p>
+            <div className="bg-gray-100 rounded-full h-16 w-16 flex items-center justify-center mx-auto mb-4">
+              <span className="text-3xl">📭</span>
+            </div>
+            <h3 className="font-medium text-gray-900 mb-1">No conversations</h3>
+            <p className="text-sm text-gray-500 mb-4">
+              {workspace === 'inbound' 
+                ? 'All unassigned conversations will appear here'
+                : 'Your assigned conversations will appear here'}
+            </p>
+            {workspace === 'inbound' && (
+              <button className="text-sm text-blue-600 hover:text-blue-700 font-medium">
+                Start a new conversation →
+              </button>
+            )}
           </div>
         ) : (
           <div className="divide-y divide-gray-100">
@@ -164,7 +188,7 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
                   key={conv.id}
                   onClick={() => onSelect(conv.id)}
                   className={`w-full p-3 flex items-start gap-3 hover:bg-gray-50 transition text-left ${
-                    isSelected ? 'bg-blue-50' : ''
+                    isSelected ? 'bg-blue-50 border-l-2 border-blue-600' : ''
                   }`}
                 >
                   {/* Avatar */}
@@ -199,11 +223,11 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
                       <p className="text-xs text-gray-500">No messages yet</p>
                     )}
 
-                      {conv.unreadCount > 0 && (
-                        <span className="mt-1 inline-flex items-center justify-center rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-semibold text-blue-700">
-                          {conv.unreadCount}
-                        </span>
-                      )}
+                    {conv.unreadCount > 0 && (
+                      <span className="mt-1 inline-flex items-center justify-center rounded-full bg-blue-600 px-2 py-0.5 text-[11px] font-semibold text-white">
+                        {conv.unreadCount}
+                      </span>
+                    )}
                   </div>
                 </button>
               )

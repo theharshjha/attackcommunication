@@ -29,9 +29,16 @@ export const auth = betterAuth({
       enabled: true,
     },
   },
+  user: {
+    additionalFields: {
+      role: {
+        type: "string",
+        required: false,
+      }
+    }
+  }
 })
 
 export type Session = typeof auth.$Infer.Session
-export type User = typeof auth.$Infer.Session.user & {
-  role: "ADMIN" | "EDITOR" | "VIEWER"
-}
+
+export type User = typeof auth.$Infer.Session.user

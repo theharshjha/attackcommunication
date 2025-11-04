@@ -97,7 +97,7 @@ export function AvatarUpload({ currentAvatar, userName, onUploadSuccess }: Avata
           type="file"
           accept="image/*"
           onChange={handleFileSelect}
-          className="hidden"
+          className="text-black hidden"
         />
       </div>
 

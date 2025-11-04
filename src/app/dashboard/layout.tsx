@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect } from 'react'
 import { useSession } from '@/lib/auth-client'
 import { Sidebar } from '@/components/dashboard/sidebar' // <-- Import our new component
-
+import '@/app/globals.css'
 export default function DashboardLayout({
   children,
 }: {

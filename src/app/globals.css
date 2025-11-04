@@ -19,6 +19,10 @@
   }
 }
 
+input {
+  color: black !important;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);

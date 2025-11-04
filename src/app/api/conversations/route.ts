@@ -16,6 +16,13 @@ export async function GET(req: NextRequest) {
     const workspace = searchParams.get('workspace') // 'inbound' or 'my-work'
     const stateParam = searchParams.get('state')
 
+    console.log('🔍 Fetching conversations:', {
+      userId: session.user.id,
+      workspace,
+      channel: channelParam,
+      state: stateParam
+    })
+
     // Build where clause
     const where: Prisma.ConversationWhereInput = {}
 
